@@ -110,21 +110,6 @@ Run the notebook in this order:
 10. Run the final public scoreboard cell.
 ```
 
-To render a visual rollout after training, create a short MP4 from the saved
-checkpoint:
-
-```bash
-python -m wm_hw.render_rollout \
-  --checkpoint-dir artifacts/student/best_checkpoint \
-  --dataset-dir data/dev \
-  --split test \
-  --horizon 200 \
-  --output artifacts/student/rollout_video.mp4
-```
-
-The video overlays MuJoCo ground truth against the model's open-loop prediction
-after the warm-up period.
-
 ## Deliverables
 
 Submit:
