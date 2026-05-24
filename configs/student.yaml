@@ -11,8 +11,8 @@ training:
   # The public scoreboard data has 1010-step windows, so we can afford long
   # training rollouts. batch_size 256 keeps the activations of long unrolls
   # inside an A100 / T4 memory budget.
-  batch_size: 256
-  updates: 12000
+  batch_size: 512
+  updates: 25000
   smoke_updates: 200
   train_sequence_length: 320
   learning_rate: 5.0e-4
