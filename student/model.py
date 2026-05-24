@@ -109,11 +109,11 @@ class StudentWorldModel(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden_dim, obs_dim),
         )
-        # bias=False forces the linear path to be exactly antisymmetric in (s, a).
-        self.linear_delta = nn.Linear(obs_dim + act_dim, obs_dim, bias=False)
+        self.linear_delta = nn.Linear(obs_dim + act_dim, obs_dim, bias=True)
         nn.init.zeros_(self.head[-1].weight)
         nn.init.zeros_(self.head[-1].bias)
         nn.init.zeros_(self.linear_delta.weight)
+        nn.init.zeros_(self.linear_delta.bias)
 
     def set_normalizer(self, normalizer) -> None:
         """Copy train-set normalization statistics into checkpointed buffers."""
@@ -156,15 +156,19 @@ class StudentWorldModel(nn.Module):
         obs_norm = (obs_flat - self.obs_mean) / self.obs_std.clamp_min(1e-6)
         act_norm = (act_flat - self.act_mean) / self.act_std.clamp_min(1e-6)
         target_norm = (residual_raw - self.delta_mean) / self.delta_std.clamp_min(1e-6)
-        # bias-free LSQ fit: features = [obs_norm, act_norm] only (no intercept column).
-        features = torch.cat([obs_norm, act_norm], dim=-1)
+        features = torch.cat(
+            [obs_norm, act_norm, torch.ones(obs_norm.shape[0], 1, device=obs_norm.device)],
+            dim=-1,
+        )
         eye = torch.eye(features.shape[-1], dtype=features.dtype, device=features.device)
         coeff = torch.linalg.solve(
             features.T @ features + float(ridge) * eye,
             features.T @ target_norm,
         )
-        self.linear_delta.weight.copy_(coeff.T)
+        self.linear_delta.weight.copy_(coeff[:-1].T)
+        self.linear_delta.bias.copy_(coeff[-1])
         self.linear_delta.weight.requires_grad_(False)
+        self.linear_delta.bias.requires_grad_(False)
         self.linear_initialized.fill_(True)
 
     def initial_hidden(self, batch_size: int, device: torch.device):

@@ -147,10 +147,6 @@ def compute_loss(model, batch: dict[str, torch.Tensor], normalizer, cfg: dict):
     actions = batch["actions"]
     _initialize_model(model, states, actions)
 
-    # Reflection augmentation: randomly negate ~50% of windows in the batch.
-    flip_prob = float(loss_cfg.get("symmetry_flip_probability", 0.5))
-    states, actions = _reflect_augment(states, actions, flip_probability=flip_prob)
-
     obs_noise_sigma = float(loss_cfg.get("obs_noise_sigma", 0.0))
     rollout_noise_sigma = float(loss_cfg.get("rollout_noise_sigma", 0.0))
 

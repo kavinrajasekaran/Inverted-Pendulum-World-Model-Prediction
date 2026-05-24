@@ -28,12 +28,8 @@ loss:
   # Curriculum range: every update samples a horizon between min and max.
   rollout_min_horizon: 16
   rollout_train_horizon: 200
-  # Reflection data augmentation: each batch, ~50% of windows are reflected.
-  # Combined with the bias-free linear prior in model.py this prevents the
-  # model from learning the one-directional drift that v1 exhibited.
-  symmetry_flip_probability: 0.5
   # Scheduled-sampling noise on rolled-out states.
-  rollout_noise_sigma: 0.008
+  rollout_noise_sigma: 0.01
   # Small input noise on the one-step loss for OOD robustness.
   obs_noise_sigma: 0.004
 
