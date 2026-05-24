@@ -10,14 +10,18 @@ The model is built around three nested priors so that gradient pressure during
 rollout training only needs to learn small corrections, not the full dynamics:
 
   1. A semi-implicit Euler kinematic prior that ties next-position to current
-     velocity (next_pos = pos + vel * dt). This guarantees position/velocity
+     velocity (next_pos = pos + vel * dt).  This guarantees position/velocity
      consistency for every prediction and removes the dominant source of drift.
-  2. A frozen linear residual fitted in closed form from a training batch. This
-     captures the small-angle (LTI) dynamics of the InvertedPendulum almost
-     perfectly, including gravity restoring torque and cart-pole coupling.
+  2. A frozen *bias-free* linear residual fitted in closed form from a training
+     batch.  Removing the intercept makes the linear path exactly antisymmetric
+     in (state, action), so the linear prior cannot encode a constant drift in
+     either direction.  This is the v2 fix for the one-directional pole/cart
+     drift that v1 exhibited.
   3. A bounded MLP residual that learns the non-linear correction on top.
-     ``delta_limit`` is small so the NN cannot overwrite the priors and can only
-     refine them; rollout stability is therefore inherited from the priors.
+     ``delta_limit`` is small so the NN cannot overwrite the priors and can
+     only refine them; rollout stability is therefore inherited from the
+     priors.  The NN residual is trained with reflection augmentation (see
+     student/losses.py) so its average behaviour is symmetric too.
 
 The clamp on next_raw is a wide safety net (well outside the data manifold) so
 it does not introduce a dead gradient inside the operating envelope; it only
@@ -105,11 +109,11 @@ class StudentWorldModel(nn.Module):
             nn.SiLU(),
             nn.Linear(hidden_dim, obs_dim),
         )
-        self.linear_delta = nn.Linear(obs_dim + act_dim, obs_dim)
+        # bias=False forces the linear path to be exactly antisymmetric in (s, a).
+        self.linear_delta = nn.Linear(obs_dim + act_dim, obs_dim, bias=False)
         nn.init.zeros_(self.head[-1].weight)
         nn.init.zeros_(self.head[-1].bias)
         nn.init.zeros_(self.linear_delta.weight)
-        nn.init.zeros_(self.linear_delta.bias)
 
     def set_normalizer(self, normalizer) -> None:
         """Copy train-set normalization statistics into checkpointed buffers."""
@@ -129,7 +133,7 @@ class StudentWorldModel(nn.Module):
         actions: torch.Tensor,
         ridge: float = 1e-5,
     ) -> None:
-        """Fit and freeze the linear normalized-residual model from a training batch.
+        """Fit and freeze the bias-free linear residual model from a training batch.
 
         With the kinematic prior enabled the linear fit predicts the residual
         delta *after* removing the kinematic component, so it only has to learn
@@ -152,19 +156,15 @@ class StudentWorldModel(nn.Module):
         obs_norm = (obs_flat - self.obs_mean) / self.obs_std.clamp_min(1e-6)
         act_norm = (act_flat - self.act_mean) / self.act_std.clamp_min(1e-6)
         target_norm = (residual_raw - self.delta_mean) / self.delta_std.clamp_min(1e-6)
-        features = torch.cat(
-            [obs_norm, act_norm, torch.ones(obs_norm.shape[0], 1, device=obs_norm.device)],
-            dim=-1,
-        )
+        # bias-free LSQ fit: features = [obs_norm, act_norm] only (no intercept column).
+        features = torch.cat([obs_norm, act_norm], dim=-1)
         eye = torch.eye(features.shape[-1], dtype=features.dtype, device=features.device)
         coeff = torch.linalg.solve(
             features.T @ features + float(ridge) * eye,
             features.T @ target_norm,
         )
-        self.linear_delta.weight.copy_(coeff[:-1].T)
-        self.linear_delta.bias.copy_(coeff[-1])
+        self.linear_delta.weight.copy_(coeff.T)
         self.linear_delta.weight.requires_grad_(False)
-        self.linear_delta.bias.requires_grad_(False)
         self.linear_initialized.fill_(True)
 
     def initial_hidden(self, batch_size: int, device: torch.device):
