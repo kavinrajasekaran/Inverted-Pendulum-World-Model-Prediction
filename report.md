@@ -49,7 +49,7 @@ I ended up at learning rate 3e-4, gradient clipping at 1.0, 20,000 updates, batc
 
 | Run | Architecture | Test VPT80@0.25 | OOD VPT80@0.25 | nMSE@10 | nMSE@1000 |
 |---|---|---|---|---|---|
-| Starter baseline | Plain MLP | ~21 | ~8 | ~0.020 | 593,128 |
+| Starter baseline | Plain MLP | ~21 | ~8 | ~0.020 | - |
 | First full run | MLP + priors | 23 | 23 | 0.0013 | 254 |
 | **Final submission** | **MLP + priors** | **32** | **31** | **0.0006** | **255** |
 
@@ -61,7 +61,7 @@ I also tried adding a GRU hidden state to give the model memory across rollout s
 
 ## Diagnostics
 
-Looking at 16 test windows from the final run: median VPT was 38, with a minimum of 27. The VPT80 of 32 is being pulled down by the hardest ~20% of windows, which fail somewhere in the 27-31 step range. Pole angle was the first state to fail in every single window - angular velocity accumulated roughly 100x more error than cart position over the full rollout. There's also a consistent negative bias across all four states that compounds over time, which explains the one-sided drift visible in the video.
+Looking at a sample of test windows from the final run: median VPT was 38, with a minimum of 27. The VPT80 of 32 is being pulled down by the hardest ~20% of windows, which fail somewhere in the 27-31 step range. Pole angle was the first state to fail in every single window - angular velocity accumulated roughly 100x more error than cart position over the full rollout. There's also a consistent negative bias across all four states that compounds over time, which explains the one-sided drift visible in the video.
 
 ---
 
