@@ -66,19 +66,6 @@ The rest of the architecture: 3 residual blocks (hidden dim 256), SiLU
 activations, LayerNorm at each block, learnable per-block output scale
 initialized at 0.5.
 
-### GRU Hidden State
-
-The model also supports an optional GRU layer (`use_gru: true`) placed after
-the residual blocks. When enabled, the GRU maintains a hidden state across
-rollout steps — giving the model memory of what has happened in previous
-steps. This is critical for long-horizon stability: without memory, small
-per-step errors compound multiplicatively with no correction mechanism. With
-a hidden state, the model can track accumulated drift and adjust predictions
-accordingly.
-
-The rollout function correctly threads the hidden state through every step of
-both training and evaluation rollouts, including the warmup phase.
-
 ### Training Data
 
 The starter trained on 110-step windows from `data/dev`. That's not enough
@@ -130,16 +117,23 @@ batch size 512, trained on A100.
 |---|---|---|---|---|---|---|
 | Starter baseline | ~5k | Plain MLP | ~21 | ~8 | ~0.020 | 593,128 |
 | First full run | 12k | MLP + priors | 23 | 23 | 0.0013 | 254 |
-| Final MLP run | 20k | MLP + priors | **32** | **31** | **0.0006** | 255 |
-| GRU run | 20k | GRU + priors | *TBD* | *TBD* | *TBD* | *TBD* |
+| **Final MLP run** | **20k** | **MLP + priors** | **32** | **31** | **0.0006** | **255** |
+| GRU experiment | 20k | GRU + priors | 28 | 28 | 0.0004 | 253 |
 
-The MLP run was evaluated on the official public scoreboard dataset with a
-1000-step horizon. Test and OOD VPT are nearly identical (32 vs 31), which
-matters — OOD uses 3× higher initial noise, so closing that gap reflects
-real robustness rather than test-set luck.
+The MLP run (best checkpoint at step 8000) was evaluated on the official
+public scoreboard dataset with a 1000-step horizon. Test and OOD VPT are
+nearly identical (32 vs 31), which matters — OOD uses 3× higher initial
+noise, so closing that gap reflects real robustness rather than test-set luck.
 
 nMSE@10 improved from 0.020 to 0.0006 — a 33× improvement in short-horizon
 accuracy.
+
+I also ran a GRU variant (same config, `use_gru: true`) to see if recurrent
+hidden state would improve long-horizon stability. It did not — the GRU
+achieved VPT=28, worse than the MLP. The GRU's best checkpoint was at step
+13500 with similar nMSE@1000 (~253), suggesting the GRU cell as appended
+to the MLP stack did not learn to carry useful state across rollout steps.
+**The submitted checkpoint is the MLP run at VPT80@0.25 = 32.**
 
 ---
 
@@ -164,17 +158,18 @@ in the rollout video (pole tilts left, cart follows).
 
 ---
 
-## Why the MLP Scores Are Still Limited
+## Why the Scores Are Still Limited
 
 The model is extremely accurate at step 10 (nMSE = 0.0006) and has fully
 diverged by step 100 (nMSE = 108) — a 180,000× increase over 90 steps.
 This exponential growth pattern is a fundamental property of stateless
 prediction: each step's error feeds into the next with no correction. The
-best submission in the class got nMSE@1000 = 0.28 while the MLP got 255 —
-a 900× gap that no amount of MLP tuning can close, because the issue is
-architectural. A recurrent model with hidden state can track accumulated
-error and self-correct across hundreds of steps. The GRU run is intended
-to address exactly this.
+best submission in the class got nMSE@1000 = 0.28 while this model got 255 —
+a 900× gap. The GRU experiment aimed to address this but the architecture
+(a single GRUCell appended after the MLP blocks) did not give the model
+enough capacity to learn meaningful hidden state transitions. A more deeply
+integrated recurrent architecture — where the GRU replaces the MLP core
+rather than augmenting it — would likely be needed to close this gap.
 
 ---
 
@@ -184,5 +179,6 @@ Starting from VPT80@0.25 ≈ 21, physics-informed priors, longer training
 data, rollout curriculum, scheduled sampling, and a lower learning rate
 brought the MLP model to **VPT80@0.25 = 32 (test) and 31 (OOD)** — a 52%
 improvement. The model generalizes well across test and OOD splits and
-achieves very accurate short-horizon predictions. The GRU run is in progress
-and results will be added once complete.
+achieves very accurate short-horizon predictions. A GRU variant was also
+trained but underperformed the MLP (VPT=28), so the MLP checkpoint is
+submitted as the final result.
